@@ -15,12 +15,14 @@ extract:
     use. The first file is created using the tshark command, so tshark
     (associated with Wireshark) must be installed. This file leverages
     Wireshark's built in TDS parser to convert the capture file to ascii. The
-    second file uses the tcpdump command. This is necessary because Wireshark
-    (and tshark output) truncate the SQL Batches when the data is too long.
-    The second file, however, does not contain the response packet information
-    which is why both files are necessary. Extract then calls ./parser which
-    reads both files and outputs the resulting SQL and Responses. Then, both 
-    temporary files are deleted.
+    second file uses tshark to output the hexidecimal representation of the
+    .pcapng file (the -x flag) which also contains the ascii. This is necessary 
+    because Wireshark (and tshark output) truncate the SQL Batches when the 
+    data is longer than 240 characters. The second file, however, does not 
+    contain the response packet information which is why both files are 
+    necessary. The program then calls ./parser which reads both files and 
+    outputs the resulting SQL and Responses. Then, both temporary files are 
+    deleted.
 parser:
     - The parser parses the first file (tshark output) by frame. Each frame
     represents one TDS packet. The two types of packets it looks for are SQL

@@ -8,8 +8,10 @@ from prettytable import PrettyTable
 
 MAX_COL = 5 # maximum number of columns in each table displayed on one line
 # offset for SQL Batch packets with Data field instead of Query
-DATA_OFF = len('0000  53 65 6c 65 63 74 20 0d 0a 20 20 6f 73 50 61 72   ')
+DATA_OFF = len('0000  11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11   ')
 
+# splits the given list into smaller lists of max size n
+# this is used to display large response tables with many columns on multiple lines
 def split_list(l, n):
     out = []
     i = 0
@@ -21,12 +23,29 @@ def split_list(l, n):
         i += n
     return out
 
+# takes in one packet of the tshark hex output and extracts the ascii
+def hex_to_ascii(s):
+    out = ''
+    for r in s.split('\n'):
+        out += r[DATA_OFF:]
+    return out
+
+# gets the ascii of all of the packet info from the tshark hex file
+def ascii_file(f):
+    pkts = f.read().split('\n\n')
+    out = ''
+    for p in pkts:
+        # extract ascii from each packet then terminate with '\n\n'
+        out += hex_to_ascii(p) + '\n\n'
+    return out
+
 if __name__ == '__main__':
     with open('out.txt', 'r') as f1:
         with open('dump.txt', 'r') as f2:
             data = f1.read().split('Frame ') # split into frames
-            dump = f2.read()
+            dump = ascii_file(f2)
             idx = 0 # idx into dump
+            # for each packet
             for d in data:
                 if 'Type: SQL batch' in d: # SQL Batch frame
                     query = None
@@ -38,23 +57,24 @@ if __name__ == '__main__':
                         matches = regex.findall(r'Query \[truncated\]: (.+)\n', d)
                         if len(matches) == 1:
                             # format query (needs extra replaces for trailing/partial \r\n
-                            query = matches[0].replace('\\r\\n', '\n')
-                            query = query.replace('\\r\\', '\n')
+                            query = matches[0].replace('\\r\\n', '..')
+                            query = query.replace('\\r\\', '..')
                             query = query.replace('\\r', '')
                             if query[len(query)-1] == '\\': query = query[:len(query)-1]
                             # look for query in dump
                             tmp = dump.find(query, idx)
                             if tmp < 0:
-                                print('[Truncated1]', end=' ')
+                                print('[Truncated]', end=' ')
                             else:
                                 idx = tmp
                                 # search for the time stamp to mark the end of the query
-                                search = regex.search(r'\d\d:\d\d:\d\d\.\d\d\d\d\d\d', dump[idx:])
+                                search = regex.search(r'\n\n', dump[idx:])
                                 if search == None:
-                                    print('[Truncated2]', end=' ')
+                                    print('[Truncated]', end=' ')
                                 else:
                                     end_idx = search.start() + idx - 1
-                                    query = dump[idx:end_idx]
+                                    query = dump[idx:end_idx].replace('..', '\n')
+                                    if query[len(query)-1] == '.': query = query[:len(query)-1]
                                     idx = end_idx
                         else: # check if Data packet
                             matches = regex.search(r'Data \(\d+ bytes\)\s+(.+\n)+\s+Data: ', d)
@@ -65,8 +85,8 @@ if __name__ == '__main__':
                                 query = query.replace('..', '\n')
                     
                     if query != None and len(query) > 0:
-                        print('SQL Batch:\n' + query)
-                        if query[len(query)-1] != '\n': print('')
+                        query = query.rstrip('\n')
+                        print('SQL Batch:\n' + query + '\n')
                     else:
                         print('SQL Batch: Invalid\n')
                 
