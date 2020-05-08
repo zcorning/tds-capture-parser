@@ -1,0 +1,108 @@
+#!/usr/bin/env python3
+
+import codecs
+import sys
+import io
+import regex
+from prettytable import PrettyTable
+
+MAX_COL = 5 # maximum number of columns in each table displayed on one line
+# offset for SQL Batch packets with Data field instead of Query
+DATA_OFF = len('0000  53 65 6c 65 63 74 20 0d 0a 20 20 6f 73 50 61 72   ')
+
+def split_list(l, n):
+    out = []
+    i = 0
+    while i < len(l):
+        if i + n > len(l):
+            out.append(l[i:])
+        else:
+            out.append(l[i:i+n])
+        i += n
+    return out
+
+if __name__ == '__main__':
+    with open('out.txt', 'r') as f1:
+        with open('dump.txt', 'r') as f2:
+            data = f1.read().split('Frame ') # split into frames
+            dump = f2.read()
+            idx = 0 # idx into dump
+            for d in data:
+                if 'Type: SQL batch' in d: # SQL Batch frame
+                    query = None
+                    matches = regex.findall(r'Query: (.+)\n', d)
+                    if len(matches) == 1:
+                        query = matches[0]
+                        query = query.replace('\\r\\n', '\n')
+                    else: # query has been truncated
+                        matches = regex.findall(r'Query \[truncated\]: (.+)\n', d)
+                        if len(matches) == 1:
+                            # format query (needs extra replaces for trailing/partial \r\n
+                            query = matches[0].replace('\\r\\n', '\n')
+                            query = query.replace('\\r\\', '\n')
+                            query = query.replace('\\r', '')
+                            if query[len(query)-1] == '\\': query = query[:len(query)-1]
+                            # look for query in dump
+                            tmp = dump.find(query, idx)
+                            if tmp < 0:
+                                print('[Truncated1]', end=' ')
+                            else:
+                                idx = tmp
+                                # search for the time stamp to mark the end of the query
+                                search = regex.search(r'\d\d:\d\d:\d\d\.\d\d\d\d\d\d', dump[idx:])
+                                if search == None:
+                                    print('[Truncated2]', end=' ')
+                                else:
+                                    end_idx = search.start() + idx - 1
+                                    query = dump[idx:end_idx]
+                                    idx = end_idx
+                        else: # check if Data packet
+                            matches = regex.search(r'Data \(\d+ bytes\)\s+(.+\n)+\s+Data: ', d)
+                            if matches != None:
+                                query = ''
+                                for m in matches.captures(1):
+                                    query += m[DATA_OFF:len(m) - 1]
+                                query = query.replace('..', '\n')
+                    
+                    if query != None and len(query) > 0:
+                        print('SQL Batch:\n' + query)
+                        if query[len(query)-1] != '\n': print('')
+                    else:
+                        print('SQL Batch: Invalid\n')
+                
+                elif 'Type: Response': # Response frame
+                    tokens = d.split('Token - ')
+                    is_data = False
+                    pts = [] # list of pretty tables, needed for lots of columns
+                    cols = 0
+                    for t in tokens:
+                        if t.startswith('ColName'):
+                            names = regex.findall(r'Column \d+ ?\(?(\w*)\)?', t)
+                            cols = len(names)
+                            if cols != 0: # does not print responses with 0 columns
+                                print('Response:')
+                                is_data = True
+                                # split into multiple pretty tables
+                                split_cols = split_list(names, MAX_COL)
+                                for l in split_cols:
+                                    pt = PrettyTable()
+                                    pt.field_names = l
+                                    pts.append(pt)
+                        if is_data and t.startswith('Row'):
+                            fields = t.split('Field ') # split row into fields
+                            fields.pop(0) # get rid of 'Row' before first field
+                            for i in range(0, len(fields)):
+                                f = fields[i]
+                                d = regex.findall(r'Data: (.*)', f)
+                                if len(d) == 1: # if there is data, use it
+                                    fields[i] = d[0].replace('\\', '')
+                                else: fields[i] = '' # else report '' as data
+                            if len(fields) == cols: 
+                                # split row into multiple pretty tables
+                                split_fields = split_list(fields, MAX_COL)
+                                for i in range(0, len(split_fields)):
+                                    pts[i].add_row(split_fields[i])
+                            else: print('Invalid row found')
+                    if is_data:
+                        for pt in pts:
+                            print(pt, end='\n\n')

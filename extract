@@ -1,0 +1,13 @@
+#!/bin/bash
+
+if [ $# -ne 1 ] 
+    then
+        echo "Usage: ./extract <filename>"
+    else
+        tshark -r hach_test_1.pcapng -O tds > out.txt
+        tcpdump -A -r hach_test_1.pcapng > dump.txt
+        ./parser
+        rm out.txt
+        rm dump.txt
+fi
+
