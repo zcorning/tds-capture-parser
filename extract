@@ -4,8 +4,9 @@ if [ $# -ne 1 ]
     then
         echo "Usage: ./extract <filename>"
     else
-        tshark -r hach_test_1.pcapng -O tds > out.txt
-        tcpdump -A -r hach_test_1.pcapng > dump.txt
+        tshark -r $1 -O tds > out.txt
+        tshark -x -r $1 > test.txt
+        tcpdump -A -r $1 > dump.txt
         ./parser
         rm out.txt
         rm dump.txt
