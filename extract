@@ -1,12 +1,11 @@
 #!/bin/bash
 
-if [ $# -ne 1 ] 
+if [ $# -ne 1 ]
     then
         echo "Usage: ./extract <filename>"
     else
         tshark -r $1 -O tds > out.txt
-        tshark -x -r $1 > test.txt
-        tcpdump -A -r $1 > dump.txt
+        tshark -x -r $1 > dump.txt
         ./parser
         rm out.txt
         rm dump.txt
